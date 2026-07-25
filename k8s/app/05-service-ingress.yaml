@@ -1,0 +1,47 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: oficina-service
+  namespace: fiap-oficina
+  labels:
+    app: tech-challenge-fase2
+spec:
+  type: ClusterIP
+  selector:
+    app: tech-challenge-fase2
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+      protocol: TCP
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: oficina-ingress
+  namespace: fiap-oficina
+  labels:
+    app: tech-challenge-fase2
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  tls:
+    - hosts:
+        - api.oficina.com
+      secretName: oficina-tls
+  rules:
+    - host: api.oficina.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: oficina-service
+                port:
+                  number: 80

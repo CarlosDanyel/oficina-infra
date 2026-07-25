@@ -1,0 +1,129 @@
+{
+  "info": {
+    "name": "FIAP Tech Challenge Fase 3 — Coleção de APIs",
+    "description": "Endpoints dos microsserviços Ordem de Serviço, Pagamento (Billing) e Notificações.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Ordem de Serviço (Porta 8080)",
+      "item": [
+        {
+          "name": "1. Abertura de OS",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customer\": {\n    \"name\": \"Carlos Danyel\",\n    \"email\": \"carlos@test.com\",\n    \"phone\": \"11999998888\"\n  },\n  \"vehicle\": {\n    \"licensePlate\": \"ABC-1234\",\n    \"brand\": \"Toyota\",\n    \"model\": \"Corolla\",\n    \"year\": 2022,\n    \"color\": \"Preto\"\n  },\n  \"services\": [\n    {\n      \"name\": \"Troca de Óleo\",\n      \"description\": \"Troca de óleo sintético e filtro\",\n      \"price\": 150.00,\n      \"estimatedHours\": 1.0\n    }\n  ],\n  \"parts\": [],\n  \"diagnosticNotes\": \"Revisão de 30.000 km\"\n}"
+            },
+            "url": {
+              "raw": "http://localhost:8080/api/service-orders",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "8080",
+              "path": ["api", "service-orders"]
+            }
+          }
+        },
+        {
+          "name": "2. Consultar OS por ID",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "http://localhost:8080/api/service-orders/SO-1",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "8080",
+              "path": ["api", "service-orders", "SO-1"]
+            }
+          }
+        },
+        {
+          "name": "3. Atualizar Status para DIAGNOSIS",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"DIAGNOSIS\"\n}"
+            },
+            "url": {
+              "raw": "http://localhost:8080/api/service-orders/SO-1/status",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "8080",
+              "path": ["api", "service-orders", "SO-1", "status"]
+            }
+          }
+        },
+        {
+          "name": "4. Aprovar Orçamento via Token",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"approvalToken\": \"TOKEN_EXEMPLO\",\n  \"approved\": true\n}"
+            },
+            "url": {
+              "raw": "http://localhost:8080/api/quotations/SO-1/approval",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "8080",
+              "path": ["api", "quotations", "SO-1", "approval"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Pagamento & Faturamento (Porta 8081)",
+      "item": [
+        {
+          "name": "1. Criar Cobrança PIX (Mercado Pago)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"serviceOrderId\": \"SO-1\",\n  \"amount\": 150.00,\n  \"customerEmail\": \"carlos@test.com\"\n}"
+            },
+            "url": {
+              "raw": "http://localhost:8081/api/payments",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "8081",
+              "path": ["api", "payments"]
+            }
+          }
+        },
+        {
+          "name": "2. Webhook Mercado Pago Notification",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "http://localhost:8081/api/payments/webhook?data.id=123456789&type=payment",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "8081",
+              "path": ["api", "payments", "webhook"],
+              "query": [
+                { "key": "data.id", "value": "123456789" },
+                { "key": "type", "value": "payment" }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

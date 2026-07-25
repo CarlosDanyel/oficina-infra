@@ -1,0 +1,95 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: oficina-app
+  namespace: fiap-oficina
+  labels:
+    app: tech-challenge-fase2
+    version: "1.0.0"
+  annotations:
+    deployment.kubernetes.io/revision: "1"
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: tech-challenge-fase2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: tech-challenge-fase2
+        version: "1.0.0"
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app
+                      operator: In
+                      values:
+                        - tech-challenge-fase2
+                topologyKey: kubernetes.io/hostname
+
+      containers:
+        - name: oficina-app
+          image: tech-challenge-fase2:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+              name: http
+
+          envFrom:
+            - configMapRef:
+                name: oficina-config
+
+          env:
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: oficina-secrets
+                  key: DB_PASSWORD
+            - name: RESEND_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: oficina-secrets
+                  key: RESEND_API_KEY
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "500m"
+              memory: "1Gi"
+          livenessProbe:
+            httpGet:
+              path: /api/actuator/health/liveness
+              port: 8080
+            initialDelaySeconds: 60
+            periodSeconds: 15
+            failureThreshold: 3
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /api/actuator/health/readiness
+              port: 8080
+            initialDelaySeconds: 45
+            periodSeconds: 10
+            failureThreshold: 3
+            timeoutSeconds: 5
+
+          startupProbe:
+            httpGet:
+              path: /api/actuator/health
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 12
+
+      terminationGracePeriodSeconds: 30

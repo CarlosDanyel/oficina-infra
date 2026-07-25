@@ -1,0 +1,161 @@
+version: '3.9'
+
+services:
+  rabbitmq:
+    image: rabbitmq:3.12-management
+    container_name: fiap-rabbitmq
+    restart: unless-stopped
+    ports:
+      - "${RABBITMQ_PORT:-5672}:5672"
+      - "${RABBITMQ_UI_PORT:-15672}:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-guest}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:-guest}
+    healthcheck:
+      test: [ "CMD", "rabbitmq-diagnostics", "-q", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - fiap-network
+
+  mysql-service-order:
+    image: mysql:8.2
+    container_name: mysql-service-order
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_SO_PASSWORD:-root_password}
+      MYSQL_DATABASE: ${MYSQL_SO_DB:-oficina_db}
+      MYSQL_USER: ${MYSQL_SO_USER:-oficina_user}
+      MYSQL_PASSWORD: ${MYSQL_SO_PASSWORD:-oficina_pass}
+    ports:
+      - "${MYSQL_SO_PORT:-3307}:3306"
+    volumes:
+      - mysql_so_data:/var/lib/mysql
+    healthcheck:
+      test: [ "CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot_password" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks:
+      - fiap-network
+
+  mysql-payment:
+    image: mysql:8.2
+    container_name: mysql-payment
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_PAY_PASSWORD:-root_password}
+      MYSQL_DATABASE: ${MYSQL_PAY_DB:-payment_db}
+      MYSQL_USER: ${MYSQL_PAY_USER:-oficina_user}
+      MYSQL_PASSWORD: ${MYSQL_PAY_PASSWORD:-oficina_pass}
+    ports:
+      - "${MYSQL_PAY_PORT:-3308}:3306"
+    volumes:
+      - mysql_pay_data:/var/lib/mysql
+    healthcheck:
+      test: [ "CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot_password" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks:
+      - fiap-network
+
+  mongo-notification:
+    image: mongo:7.0
+    container_name: mongo-notification
+    restart: unless-stopped
+    ports:
+      - "${MONGO_PORT:-27017}:27017"
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - fiap-network
+
+  service-order-service:
+    build:
+      context: ../ordem-de-service
+      dockerfile: Dockerfile
+    container_name: service-order-service
+    restart: unless-stopped
+    depends_on:
+      mysql-service-order:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      DB_HOST: mysql-service-order
+      DB_PORT: 3306
+      DB_NAME: ${MYSQL_SO_DB:-oficina_db}
+      DB_USERNAME: ${MYSQL_SO_USER:-oficina_user}
+      DB_PASSWORD: ${MYSQL_SO_PASSWORD:-oficina_pass}
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USERNAME: ${RABBITMQ_DEFAULT_USER:-guest}
+      RABBITMQ_PASSWORD: ${RABBITMQ_DEFAULT_PASS:-guest}
+    ports:
+      - "8080:8080"
+    networks:
+      - fiap-network
+
+  payment-billing-service:
+    build:
+      context: ../payment-billing
+      dockerfile: Dockerfile
+    container_name: payment-billing-service
+    restart: unless-stopped
+    depends_on:
+      mysql-payment:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      DB_HOST: mysql-payment
+      DB_PORT: 3306
+      DB_NAME: ${MYSQL_PAY_DB:-payment_db}
+      DB_USERNAME: ${MYSQL_PAY_USER:-oficina_user}
+      DB_PASSWORD: ${MYSQL_PAY_PASSWORD:-oficina_pass}
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USERNAME: ${RABBITMQ_DEFAULT_USER:-guest}
+      RABBITMQ_PASSWORD: ${RABBITMQ_DEFAULT_PASS:-guest}
+      MERCADO_PAGO_ACCESS_TOKEN: ${MERCADO_PAGO_ACCESS_TOKEN:-TEST-TOKEN}
+    ports:
+      - "8081:8081"
+    networks:
+      - fiap-network
+
+  notification-service:
+    build:
+      context: ../notification-service
+      dockerfile: Dockerfile
+    container_name: notification-service
+    restart: unless-stopped
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      mongo-notification:
+        condition: service_started
+    environment:
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USERNAME: ${RABBITMQ_DEFAULT_USER:-guest}
+      RABBITMQ_PASSWORD: ${RABBITMQ_DEFAULT_PASS:-guest}
+      MONGO_URI: mongodb://mongo-notification:27017/${MONGO_DB:-notification_db}
+      RESEND_API_KEY: ${RESEND_API_KEY:-re_placeholder}
+      RESEND_FROM_EMAIL: ${RESEND_FROM_EMAIL:-oficina@fabrincahub.com}
+    ports:
+      - "8082:8082"
+    networks:
+      - fiap-network
+
+volumes:
+  mysql_so_data:
+  mysql_pay_data:
+  mongo_data:
+
+networks:
+  fiap-network:
+    driver: bridge
