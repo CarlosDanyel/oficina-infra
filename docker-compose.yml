@@ -63,15 +63,15 @@ services:
     networks:
       - fiap-network
 
-  mongo-notification:
+  mongo:
     image: mongo:7.0
-    container_name: mongo-notification
+    container_name: mongo
     restart: unless-stopped
     ports:
       - "${MONGO_PORT:-27017}:27017"
     environment:
-      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER:-root}
-      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-root_password}
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME:-root}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD:-root_password}
     volumes:
       - mongo_data:/data/db
     networks:
@@ -88,16 +88,12 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+    env_file:
+      - ../ordem-de-service/k8s/.env
     environment:
       DB_HOST: mysql-service-order
       DB_PORT: 3306
-      DB_NAME: ${MYSQL_SO_DB:-oficina_db}
-      DB_USERNAME: ${MYSQL_SO_USER:-oficina_user}
-      DB_PASSWORD: ${MYSQL_SO_PASSWORD:-oficina_pass}
       RABBITMQ_HOST: rabbitmq
-      RABBITMQ_PORT: 5672
-      RABBITMQ_USERNAME: ${RABBITMQ_DEFAULT_USER:-guest}
-      RABBITMQ_PASSWORD: ${RABBITMQ_DEFAULT_PASS:-guest}
     ports:
       - "8080:8080"
     networks:
@@ -114,17 +110,8 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
-    environment:
-      DB_HOST: mysql-payment
-      DB_PORT: 3306
-      DB_NAME: ${MYSQL_PAY_DB:-payment_db}
-      DB_USERNAME: ${MYSQL_PAY_USER:-oficina_user}
-      DB_PASSWORD: ${MYSQL_PAY_PASSWORD:-oficina_pass}
-      RABBITMQ_HOST: rabbitmq
-      RABBITMQ_PORT: 5672
-      RABBITMQ_USERNAME: ${RABBITMQ_DEFAULT_USER:-guest}
-      RABBITMQ_PASSWORD: ${RABBITMQ_DEFAULT_PASS:-guest}
-      MERCADO_PAGO_ACCESS_TOKEN: ${MERCADO_PAGO_ACCESS_TOKEN:-TEST-TOKEN}
+    env_file:
+      - ../payment-billing/k8s/.env
     ports:
       - "8081:8081"
     networks:
@@ -139,16 +126,10 @@ services:
     depends_on:
       rabbitmq:
         condition: service_healthy
-      mongo-notification:
+      mongo:
         condition: service_started
-    environment:
-      RABBITMQ_HOST: rabbitmq
-      RABBITMQ_PORT: 5672
-      RABBITMQ_USERNAME: ${RABBITMQ_DEFAULT_USER:-guest}
-      RABBITMQ_PASSWORD: ${RABBITMQ_DEFAULT_PASS:-guest}
-      MONGO_URI: mongodb://${MONGO_ROOT_USER:-root}:${MONGO_ROOT_PASSWORD:-root_password}@mongo-notification:27017/${MONGO_DB:-notification_db}?authSource=admin
-      RESEND_API_KEY: ${RESEND_API_KEY:-re_placeholder}
-      RESEND_FROM_EMAIL: ${RESEND_FROM_EMAIL:-oficina@fabrincahub.com}
+    env_file:
+      - ../notification-service/k8s/.env
     ports:
       - "8082:8082"
     networks:

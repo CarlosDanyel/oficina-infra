@@ -1,17 +1,3 @@
-# ─────────────────────────────────────────────────────────────────────────────
-# Services + Ingress Centralizado
-#
-# Um único Ingress roteia paths de negócio para os microsserviços.
-# Cada serviço tem prefixo de API único — sem colisão:
-#
-#   service-order-service  → /api/service-orders, /api/quotations
-#   payment-billing-service → /api/payments
-#
-# Swagger, Actuator e endpoints de debug:
-#   Acessar via kubectl port-forward (não expostos externamente):
-#     kubectl port-forward svc/service-order-service 8080:80 -n fiap-oficina
-#     kubectl port-forward svc/payment-billing-service 8081:80 -n fiap-oficina
-# ─────────────────────────────────────────────────────────────────────────────
 apiVersion: v1
 kind: Service
 metadata:
