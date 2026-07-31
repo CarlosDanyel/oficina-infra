@@ -1,144 +1,338 @@
-# Oficina Mecânica Distribuída — Repositório de Infraestrutura Centralizada (`oficina-infra`)
+# Guia de Execução — Sistema de Oficina Distribuída (FIAP Fase 3)
 
-FIAP — Pós Tech | Arquitetura de Software (Fase 3)  
-Docker Compose · Kubernetes (K8s) · RabbitMQ Broker · MySQL (SQL) · MongoDB (NoSQL)
-
----
-
-## Detalhamento dos Componentes de Infraestrutura
-
-Este repositório reúne e orquestra todos os recursos de infraestrutura necessários para sustentar a aplicação distribuída em microsserviços:
-
-### 1. Mensageria & Eventos (RabbitMQ Broker)
-- **Container**: `fiap-rabbitmq` (Imagem: `rabbitmq:3.12-management`)
-- **Portas**: `5672` (Protocolo AMQP) / `15672` (Painel Web Management)
-- **Função**: Atua como o barramento de comunicação assíncrona entre os microsserviços. Implementa o **Saga Pattern Coreografado** por meio do Topic Exchange `oficina.exchange`, garantindo que eventos como abertura de OS, geração de orçamentos e atualizações de pagamento sejam distribuídos sem acoplamento e com suporte a rollback compensatório.
-
-### 2. Banco de Dados Relacional SQL — Ordens de Serviço (`mysql-service-order`)
-- **Container**: `mysql-service-order` (Imagem: `mysql:8.2`)
-- **Porta**: `3307` (mapeada para a `3306` interna do container)
-- **Banco**: `oficina_db`
-- **Função**: Armazena as entidades relacionais do microsserviço `service-order-service` (Clientes, Veículos, Ordens de Serviço, Itens de Serviço, Peças e Histórico de Status). Mantém o isolamento total dos dados transacionais da oficina.
-
-### 3. Banco de Dados Relacional SQL — Pagamentos & Cobrança (`mysql-payment`)
-- **Container**: `mysql-payment` (Imagem: `mysql:8.2`)
-- **Porta**: `3308` (mapeada para a `3306` interna do container)
-- **Banco**: `payment_db`
-- **Função**: Banco de dados exclusivo do microsserviço `payment-billing-service`. Registra o histórico de cobranças, transações PIX geradas via Mercado Pago, IDs externos e status de pagamento de forma isolada das ordens de serviço.
-
-### 4. Banco de Dados Não-Relacional NoSQL — Auditoria de Notificações (`mongo-notification`)
-- **Container**: `mongo-notification` (Imagem: `mongo:7.0`)
-- **Porta**: `27017`
-- **Banco**: `notification_db`
-- **Função**: Banco de dados NoSQL do microsserviço `notification-service`. Armazena os documentos de log de auditoria de todas as notificações e e-mails disparados via Resend API (destinatário, assunto, evento de origem, status do envio e timestamp), garantindo alta velocidade de escrita e esquema flexível.
-
-### 5. Microsserviços Containerizados
-- **`service-order-service`** (Porta `8080`): API de gestão de Ordens de Serviço.
-- **`payment-billing-service`** (Porta `8081`): API de cobrança e webhooks Mercado Pago.
-- **`notification-service`** (Porta `8082`): Consumidor assíncrono de notificações.
+Este guia descreve como executar o sistema completo com Docker Compose, Kubernetes, testar o Saga Pattern via Postman e realizar deploy automatizado com CI/CD.
 
 ---
 
-## Como Iniciar a Aplicação
+## Pré-requisitos
 
-A aplicação pode ser executada localmente via **Docker Compose** (recomendado para desenvolvimento rápido) ou via **Kubernetes** (ambiente de produção e entrega oficial do desafio).
-
-### Estrutura de Pastas Esperada
-Certifique-se de que os 4 repositórios estejam clonados na mesma pasta pai:
-
-```text
-PROJETOS/fase-3/
-├── oficina-infra/         # Repositório de Infraestrutura (este repositório)
-├── ordem-de-service/      # Microsserviço de Ordens de Serviço
-├── payment-billing/       # Microsserviço de Pagamentos e Billing
-└── notification-service/  # Microsserviço de Notificações
+```bash
+# Ferramentas necessárias
+Java 17+        # SDK para compilar os microsserviços
+Docker Desktop  # Container runtime + Kubernetes local
+Maven           # Build dos projetos
+Postman         # Testar APIs e fluxo do Saga
 ```
 
 ---
 
-### Opção 1: Iniciar com Docker Compose (Desenvolvimento Local)
+## Opção 1: Docker Compose (Recomendado para Desenvolvimento)
 
-1. **Subir todos os contêineres:**
-   Navegue até a pasta `oficina-infra` e execute:
-   ```bash
-   cd oficina-infra
-   docker-compose up -d --build
-   ```
+### 1.1 Iniciar todos os serviços
 
-2. **Verificar os Contêineres Rodando:**
-   ```bash
-   docker-compose ps
-   ```
+```bash
+cd oficina-infra
 
-3. **URLs de Acesso:**
-   - **RabbitMQ Dashboard**: http://localhost:15672 (`guest` / `guest`)
-   - **Swagger OS Service**: http://localhost:8080/swagger-ui.html
-   - **Swagger Payment Service**: http://localhost:8081/swagger-ui.html
-   - **Swagger Notification Service**: http://localhost:8082/swagger-ui.html
+# Subir todos os 6 containers (RabbitMQ, MySQL×2, MongoDB, 3 microservices)
+docker compose up -d --build
 
-4. **Para Parar a Aplicação:**
-   ```bash
-   docker-compose down
-   ```
+# Verificar se tudo subiu
+docker compose ps
+```
+
+### 1.2 URLs
+
+| Serviço | URL |
+|---|---|
+| Service Order API (Swagger) | http://localhost:8080/swagger-ui.html |
+| Payment Billing API (Swagger) | http://localhost:8081/swagger-ui.html |
+| Notification Health Check | http://localhost:8082/actuator/health |
+| RabbitMQ Dashboard | http://localhost:15672 (guest/guest) |
+
+### 1.3 Parar tudo
+
+```bash
+docker compose down -v
+```
 
 ---
 
-### Opção 2: Iniciar no Kubernetes (Deploy Oficial / Produção)
+## Opção 2: Kubernetes (Docker Desktop)
 
-#### 1. Habilitar o Kubernetes no Docker Desktop
-Abra o Docker Desktop ➔ **Settings** ➔ **Kubernetes** ➔ Marque **Enable Kubernetes** e clique em **Apply & Restart**.
+### 2.1 Habilitar Kubernetes no Docker Desktop
 
-#### 2. Fazer o Build das Imagens Docker Locais
-No terminal, gere a imagem Docker de cada um dos 3 microsserviços:
-
-```bash
-# Build da imagem do Service Order
-cd ../ordem-de-service && docker build -t service-order-service:latest .
-
-# Build da imagem do Payment Billing
-cd ../payment-billing && docker build -t payment-billing-service:latest .
-
-# Build da imagem do Notification Service
-cd ../notification-service && docker build -t notification-service:latest .
+```
+Docker Desktop → Settings → Kubernetes → Enable Kubernetes → Apply & Restart
 ```
 
-#### 3. Aplicar os Manifestos K8s no Cluster
-Retorne à pasta `oficina-infra` e execute o `kubectl`:
+### 2.2 Instalar addons
 
 ```bash
-cd ../oficina-infra
+# Metrics Server (necessário para HPA)
+kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+
+# NGINX Ingress Controller
+kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/cloud/deploy.yaml
+```
+
+### 2.3 Deploy da Infraestrutura (oficina-infra)
+
+```bash
+cd oficina-infra
+
+# Aplicar todos os manifests (RabbitMQ, MySQL×2, MongoDB, Ingress)
+kubectl apply -k k8s/
+
+# Aguardar infra ficar pronta
+kubectl wait --for=condition=ready pod -l app=rabbitmq -n fiap-oficina --timeout=120s
+kubectl wait --for=condition=ready pod -l app=mysql-service-order -n fiap-oficina --timeout=120s
+kubectl wait --for=condition=ready pod -l app=mysql-payment -n fiap-oficina --timeout=120s
+kubectl wait --for=condition=ready pod -l app=mongo -n fiap-oficina --timeout=120s
+```
+
+### 2.4 Build e Deploy dos Microsserviços
+
+```bash
+# Ordem de Serviço
+cd ../ordem-de-service
+docker build -t service-order-service:latest .
+kubectl apply -k k8s/
+
+# Payment Billing
+cd ../payment-billing
+docker build -t payment-billing-service:latest .
+kubectl apply -k k8s/
+
+# Notification
+cd ../notification-service
+docker build -t notification-service:latest .
 kubectl apply -k k8s/
 ```
 
-#### 4. Acompanhar os Pods e Status
-```bash
-# Listar todos os Pods e Serviços do Namespace
-kubectl get all -n fiap-oficina
+### 2.5 Verificar o deploy
 
-# Acompanhar a subida dos Pods em tempo real
+```bash
 kubectl get pods -n fiap-oficina -w
+# Aguarde todos os pods ficarem Running
+
+kubectl get hpa -n fiap-oficina
+# Verifique os HPAs ativos
 ```
 
-#### 5. Acessar os Serviços via Port-Forward (caso necessário)
+### 2.6 Acessar via port-forward
+
 ```bash
-# Acessar a API do Service Order na porta 8080
-kubectl port-forward svc/service-order-service 8080:8080 -n fiap-oficina
+# Service Order (porta 8080)
+kubectl port-forward svc/service-order-service 8080:80 -n fiap-oficina &
 
-# Acessar a API do Payment Billing na porta 8081
-kubectl port-forward svc/payment-billing-service 8081:8081 -n fiap-oficina
+# Payment Billing (porta 8081)
+kubectl port-forward svc/payment-billing-service 8081:80 -n fiap-oficina &
 
-# Acessar a API do Notification Service na porta 8082
-kubectl port-forward svc/notification-service 8082:8082 -n fiap-oficina
+# Notification (porta 8082)
+kubectl port-forward svc/notification-service 8082:80 -n fiap-oficina &
+
+# RabbitMQ Dashboard (porta 15672)
+kubectl port-forward svc/rabbitmq 15672:15672 -n fiap-oficina &
 ```
 
-#### 6. Deletar os Recursos do Kubernetes:
+### 2.7 Parar e remover
+
 ```bash
-kubectl delete -k k8s/
+kubectl delete -k oficina-infra/k8s/
+kubectl delete namespace fiap-oficina
 ```
 
 ---
 
-## Coleção do Postman
+## Fluxo Completo do Saga via Postman
 
-O arquivo JSON com a coleção completa de testes das APIs está disponível na raiz deste repositório:
-- [postman_collection.json](./postman_collection.json)
+### 3.1 Importar a Collection
+
+1. Abra o Postman
+2. Clique **Import** → selecione o arquivo `postman_collection.json` (na raiz de qualquer repositório)
+
+### 3.2 🏁 Happy Path — Fluxo de Sucesso
+
+Execute as requests na pasta **"🏁 HAPPY PATH — Fluxo Completo do Saga"** na ordem:
+
+| # | Request | O que acontece | Saga Event |
+|---|---|---|---|
+| 1.1 | `POST Criar OS` | Cria OS com status RECEIVED | Publica `ServiceOrderCreatedEvent` → notification envia e-mail |
+| 1.2 | `PATCH → DIAGNOSIS` | Oficina inicia diagnóstico | — |
+| 1.3 | `PATCH → AWAITING_APPROVAL` | Gera orçamento com token de aprovação | Publica `QuotationCreatedEvent` → notification envia e-mail com link |
+| 1.4 | `GET Aprovar` | Cliente aprova via link mágico | OS → EXECUTION |
+| 1.5 | `PATCH → FINISHED` | Serviço concluído | — |
+| 1.6 | `POST Criar Pagamento PIX` | Gera cobrança PIX (mock) | Pagamento PENDING |
+| 1.7 | `POST Webhook Aprovado` | Simula confirmação Mercado Pago | Publica `PaymentApprovedEvent` → ordem-de-service consome |
+| 1.8 | `GET Verificar Pagamento` | Confirma APPROVED | — |
+| 1.9 | `GET Status OS` | **OS = DELIVERED** ✅ | Saga concluído com sucesso! |
+
+### 3.3 🔄 Rollback — Falha de Pagamento
+
+Execute as requests na pasta **"🔄 SAGA ROLLBACK — Falha de Pagamento + Compensação"**:
+
+| # | Request | Saga Event |
+|---|---|---|
+| 2.1-2.6 | Criar OS → Avançar até FINISHED → Criar Pagamento | Mesmo fluxo do Happy Path |
+| 2.7 | `POST Webhook Rejeitado` | Publica `PaymentFailedEvent` → ordem-de-service executa compensação |
+| 2.8 | `GET Status OS` | **OS = CANCELED** 🔄 | `SAGA ROLLBACK COMPENSATÓRIO` executado! |
+
+### 3.4 Monitorar Eventos no RabbitMQ
+
+Enquanto executa o fluxo, acesse http://localhost:15672 (guest/guest) e veja:
+- **Queues**: mensagens em `service-order.created.queue`, `quotation.created.queue`, `payment.approved.queue`, `payment.failed.queue`
+- **Exchanges**: `oficina.exchange` (topic) com bindings para as 4 filas
+
+---
+
+## Deploy Automatizado com CI/CD
+
+### 4.1 Estrutura das Pipelines
+
+Cada microsserviço tem:
+
+| Pipeline | Arquivo | Quando roda |
+|---|---|---|
+| **CI** | `.github/workflows/ci.yml` | Todo push e pull request |
+| **CD** | `.github/workflows/cd.yml` | Push na branch `main` |
+
+### 4.2 CI — Integração Contínua
+
+O pipeline CI executa:
+1. Checkout + Java 17 + Maven
+2. `mvn compile` — compilação
+3. `mvn test` — testes unitários e BDD com JaCoCo
+4. SonarQube scan — análise de qualidade (Quality Gate obrigatório)
+5. `mvn package` — gera o JAR
+
+### 4.3 CD — Deploy Automatizado
+
+O pipeline CD executa:
+1. `mvn package` — gera o JAR
+2. `docker build` — constrói imagem local
+3. `kubectl apply` — aplica Namespace, ConfigMap, Secrets
+4. `kubectl apply` — aplica Deployment, Service, HPA
+5. `kubectl rollout restart` — reinicia pods para usar nova imagem
+6. `kubectl rollout status` — aguarda deploy estabilizar
+7. Rollback automático em caso de falha
+
+### 4.4 Configurar GitHub Actions Runner
+
+```bash
+# 1. No GitHub: Settings → Actions → Runners → New self-hosted runner
+# 2. Siga as instruções para baixar e configurar o runner na sua máquina
+# 3. Configure os Secrets no GitHub:
+
+# Em Settings → Secrets and variables → Actions:
+DB_PASSWORD           → oficina_pass
+MYSQL_ROOT_PASSWORD   → root_password
+MERCADO_PAGO_ACCESS_TOKEN → TEST-TOKEN
+RESEND_API_KEY        → re_placeholder
+```
+
+### 4.5 Configurar Proteção da Branch Main
+
+```
+GitHub → Repositório → Settings → Branches → Add classic branch protection rule
+
+Branch name pattern: main
+☑ Require a pull request before merging (1 approval)
+☑ Require status checks to pass before merging
+   └─ Status checks: build-and-test
+☑ Require conversation resolution before merging
+☐ Allow force pushes (desmarcado)
+☐ Allow deletions (desmarcado)
+```
+
+### 4.6 Testar o Deploy Automatizado
+
+```bash
+# 1. Faça uma alteração no código
+# 2. Crie uma branch
+git checkout -b feature/teste-deploy
+
+# 3. Commit e push
+git add .
+git commit -m "test: valida deploy automatizado"
+git push origin feature/teste-deploy
+
+# 4. Abra um Pull Request no GitHub
+# 5. O CI roda automaticamente (build + testes + SonarQube)
+# 6. Após aprovação, faça merge na main
+# 7. O CD faz o deploy automático no Kubernetes
+```
+
+---
+
+## Verificar Cobertura de Testes
+
+### Localmente
+
+```bash
+# Em qualquer microsserviço
+mvn clean verify
+
+# Relatório JaCoCo em:
+open target/site/jacoco/index.html
+```
+
+### Mínimo Exigido
+
+| Métrica | Valor |
+|---|---|
+| Cobertura de instruções | ≥ 80% |
+| Cobertura de branches | ≥ 80% |
+
+### SonarQube
+
+O CI valida a qualidade automaticamente. O Quality Gate falha se a cobertura for < 80%.
+
+---
+
+## Troubleshooting
+
+### Docker Compose
+
+```bash
+# Se um serviço não sobe
+docker compose logs <service-name>
+
+# Rebuild completo
+docker compose down -v && docker compose up -d --build
+```
+
+### Kubernetes
+
+```bash
+# Ver logs de um pod
+kubectl logs -f deployment/<deployment-name> -n fiap-oficina
+
+# Descrever pod com erro
+kubectl describe pod <pod-name> -n fiap-oficina
+
+# Ver eventos recentes
+kubectl get events -n fiap-oficina --sort-by=.metadata.creationTimestamp | tail -20
+
+# Reiniciar um deployment
+kubectl rollout restart deployment/<deployment-name> -n fiap-oficina
+```
+
+### Postman
+
+```bash
+# Se as variáveis não estão sendo preenchidas:
+# 1. Verifique se as variáveis de coleção existem (olho no canto superior direito)
+# 2. Execute as requests NA ORDEM (cada request extrai IDs da resposta da anterior)
+# 3. Verifique se todos os serviços estão rodando (health checks)
+```
+
+---
+
+## Resumo Rápido
+
+```bash
+# ⚡ Quick Start — Docker Compose
+cd oficina-infra && docker compose up -d --build
+
+# 🧪 Testar Saga (Postman)
+# Importe postman_collection.json → execute as pastas na ordem:
+#   "🏁 HAPPY PATH" → 1.1 até 1.9 (fluxo feliz)
+#   "🔄 SAGA ROLLBACK" → 2.1 até 2.8 (compensação)
+
+# 📊 Ver cobertura de testes
+cd qualquer-microsservico && mvn clean verify
+open target/site/jacoco/index.html
+
+# 🐳 Parar tudo
+docker compose down -v
+```
