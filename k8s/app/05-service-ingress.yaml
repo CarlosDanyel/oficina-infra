@@ -1,18 +1,49 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Services + Ingress Centralizado
+#
+# Um único Ingress roteia paths de negócio para os microsserviços.
+# Cada serviço tem prefixo de API único — sem colisão:
+#
+#   service-order-service  → /api/service-orders, /api/quotations
+#   payment-billing-service → /api/payments
+#
+# Swagger, Actuator e endpoints de debug:
+#   Acessar via kubectl port-forward (não expostos externamente):
+#     kubectl port-forward svc/service-order-service 8080:80 -n fiap-oficina
+#     kubectl port-forward svc/payment-billing-service 8081:80 -n fiap-oficina
+# ─────────────────────────────────────────────────────────────────────────────
 apiVersion: v1
 kind: Service
 metadata:
-  name: oficina-service
+  name: service-order-service
   namespace: fiap-oficina
   labels:
-    app: tech-challenge-fase2
+    app: service-order-service
 spec:
   type: ClusterIP
   selector:
-    app: tech-challenge-fase2
+    app: service-order-service
   ports:
     - name: http
       port: 80
       targetPort: 8080
+      protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: payment-billing-service
+  namespace: fiap-oficina
+  labels:
+    app: payment-billing-service
+spec:
+  type: ClusterIP
+  selector:
+    app: payment-billing-service
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8081
       protocol: TCP
 ---
 apiVersion: networking.k8s.io/v1
@@ -21,7 +52,7 @@ metadata:
   name: oficina-ingress
   namespace: fiap-oficina
   labels:
-    app: tech-challenge-fase2
+    app: oficina-ingress
   annotations:
     kubernetes.io/ingress.class: "nginx"
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
@@ -38,10 +69,27 @@ spec:
     - host: api.oficina.com
       http:
         paths:
-          - path: /
+          # ── service-order-service (porta 8080) ─────────────────────────
+          - path: /api/service-orders
             pathType: Prefix
             backend:
               service:
-                name: oficina-service
+                name: service-order-service
+                port:
+                  number: 80
+          - path: /api/quotations
+            pathType: Prefix
+            backend:
+              service:
+                name: service-order-service
+                port:
+                  number: 80
+
+          # ── payment-billing-service (porta 8081) ───────────────────────
+          - path: /api/payments
+            pathType: Prefix
+            backend:
+              service:
+                name: payment-billing-service
                 port:
                   number: 80

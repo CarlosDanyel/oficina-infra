@@ -1,0 +1,258 @@
+{
+  "info": {
+    "name": "FIAP Fase 3 — Saga Coreografado (Fluxo Completo)",
+    "description": "Postman Collection com fluxo transacional completo do Saga Pattern Coreografado: Happy Path (OS → Diagnóstico → Orçamento → Pagamento → Entrega) e Rollback (falha de pagamento → compensação). Inclui health checks.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url_so", "value": "http://localhost:8080" },
+    { "key": "base_url_pay", "value": "http://localhost:8081" },
+    { "key": "base_url_notif", "value": "http://localhost:8082" },
+    { "key": "rabbitmq_ui", "value": "http://localhost:15672" },
+    { "key": "os_id", "value": "" },
+    { "key": "order_number", "value": "" },
+    { "key": "approval_token", "value": "" },
+    { "key": "external_payment_id", "value": "" },
+    { "key": "os_id_rollback", "value": "" },
+    { "key": "approval_token_rb", "value": "" },
+    { "key": "ext_pay_rollback", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "🏁 HAPPY PATH — Fluxo Completo do Saga",
+      "description": "Fluxo transacional completo: OS → Diagnóstico → Orçamento → Aprovação → Execução → Pagamento PIX → Webhook → Entrega. Execute na ordem! As variáveis (OS ID, token, payment ID) são extraídas automaticamente via scripts.",
+      "item": [
+        {
+          "name": "1.1 Criar OS (RECEIVED → publica ServiceOrderCreatedEvent)",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": ["var data = pm.response.json(); pm.collectionVariables.set('os_id', data.id); pm.collectionVariables.set('order_number', data.orderNumber); pm.test('Status 201 Created', function() { pm.response.to.have.status(201); }); pm.test('Status RECEIVED', function() { pm.expect(data.status).to.equal('RECEIVED'); });"],
+              "type": "text/javascript"
+            }
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"customer\": { \"name\": \"Carlos Danyel\", \"email\": \"carlos@test.com\", \"phone\": \"11999998888\" },\n  \"vehicle\": { \"licensePlate\": \"XYZ-5678\", \"brand\": \"Honda\", \"model\": \"Civic\", \"year\": 2024, \"color\": \"Prata\" },\n  \"services\": [\n    { \"name\": \"Revisão Completa\", \"description\": \"Revisão 60.000 km\", \"price\": 850.00, \"estimatedHours\": 3.0 },\n    { \"name\": \"Alinhamento\", \"description\": \"Alinhamento 4 rodas\", \"price\": 180.00, \"estimatedHours\": 1.0 }\n  ],\n  \"parts\": [\n    { \"name\": \"Kit Filtro de Óleo\", \"partNumber\": \"FIL-001\", \"quantity\": 1, \"unitPrice\": 65.00 },\n    { \"name\": \"Óleo Sintético 5W30\", \"partNumber\": \"OIL-5W30\", \"quantity\": 1, \"unitPrice\": 180.00 }\n  ],\n  \"diagnosticNotes\": \"Vibração no volante acima de 80 km/h\"\n}" },
+            "url": { "raw": "{{base_url_so}}/api/service-orders", "host": ["{{base_url_so}}"], "path": ["api", "service-orders"] }
+          }
+        },
+        {
+          "name": "1.2 Atualizar Status → DIAGNOSIS (oficina avalia o veículo)",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\"status\": \"DIAGNOSIS\"}" },
+            "url": { "raw": "{{base_url_so}}/api/service-orders/{{os_id}}/status", "host": ["{{base_url_so}}"], "path": ["api", "service-orders", "{{os_id}}", "status"] }
+          }
+        },
+        {
+          "name": "1.3 Gerar Orçamento → AWAITING_APPROVAL (publica QuotationCreatedEvent → notification envia e-mail)",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": ["var data = pm.response.json(); pm.collectionVariables.set('approval_token', data.approvalToken); pm.test('AWAITING_APPROVAL', function() { pm.expect(data.status).to.equal('AWAITING_APPROVAL'); }); pm.test('Tem approvalToken', function() { pm.expect(data.approvalToken).to.not.be.null; });"],
+              "type": "text/javascript"
+            }
+          }],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\"status\": \"AWAITING_APPROVAL\"}" },
+            "url": { "raw": "{{base_url_so}}/api/service-orders/{{os_id}}/status", "host": ["{{base_url_so}}"], "path": ["api", "service-orders", "{{os_id}}", "status"] }
+          }
+        },
+        {
+          "name": "1.4 Cliente APROVA orçamento (link mágico do e-mail)",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": ["var data = pm.response.json(); pm.test('EXECUTION (aprovado)', function() { pm.expect(data.status).to.equal('EXECUTION'); });"],
+              "type": "text/javascript"
+            }
+          }],
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url_so}}/api/quotations/{{os_id}}?token={{approval_token}}&approved=true", "host": ["{{base_url_so}}"], "path": ["api", "quotations", "{{os_id}}"], "query": [{ "key": "token", "value": "{{approval_token}}" }, { "key": "approved", "value": "true" }] }
+          }
+        },
+        {
+          "name": "1.5 Serviço concluído → FINISHED",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\"status\": \"FINISHED\"}" },
+            "url": { "raw": "{{base_url_so}}/api/service-orders/{{os_id}}/status", "host": ["{{base_url_so}}"], "path": ["api", "service-orders", "{{os_id}}", "status"] }
+          }
+        },
+        {
+          "name": "1.6 Criar Pagamento PIX (Mercado Pago)",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": ["var data = pm.response.json(); pm.collectionVariables.set('external_payment_id', data.externalId); pm.test('PENDING', function() { pm.expect(data.status).to.equal('PENDING'); }); pm.test('PIX', function() { pm.expect(data.paymentMethod).to.equal('PIX'); });"],
+              "type": "text/javascript"
+            }
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"serviceOrderId\": \"{{os_id}}\",\n  \"amount\": 1275.00,\n  \"customerEmail\": \"carlos@test.com\"\n}" },
+            "url": { "raw": "{{base_url_pay}}/api/payments", "host": ["{{base_url_pay}}"], "path": ["api", "payments"] }
+          }
+        },
+        {
+          "name": "1.7 Webhook Mercado Pago — Pagamento APROVADO (publica PaymentApprovedEvent → Saga sucesso)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": ["pm.test('Webhook 200 OK', function() { pm.response.to.have.status(200); });"], "type": "text/javascript" }
+          }],
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{base_url_pay}}/api/payments/webhook?data.id={{external_payment_id}}&type=payment&action=payment.updated", "host": ["{{base_url_pay}}"], "path": ["api", "payments", "webhook"], "query": [{ "key": "data.id", "value": "{{external_payment_id}}" }, { "key": "type", "value": "payment" }, { "key": "action", "value": "payment.updated" }] }
+          }
+        },
+        {
+          "name": "1.8 Verificar Pagamento Aprovado",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": ["var data = pm.response.json(); pm.test('APPROVED', function() { pm.expect(data.status).to.equal('APPROVED'); });"], "type": "text/javascript" }
+          }],
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url_pay}}/api/payments/service-order/{{os_id}}", "host": ["{{base_url_pay}}"], "path": ["api", "payments", "service-order", "{{os_id}}"] }
+          }
+        },
+        {
+          "name": "1.9 Verificar OS — DELIVERED (Saga concluído com sucesso!) 🎉",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": ["var data = pm.response.json(); pm.test('DELIVERED — Saga Happy Path concluído!', function() { pm.expect(data.status).to.equal('DELIVERED'); pm.expect(data.statusDescription).to.equal('Entregue'); });"], "type": "text/javascript" }
+          }],
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url_so}}/api/service-orders/{{os_id}}/status", "host": ["{{base_url_so}}"], "path": ["api", "service-orders", "{{os_id}}", "status"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🔄 SAGA ROLLBACK — Falha de Pagamento + Compensação",
+      "description": "Demonstra o mecanismo de compensação do Saga: pagamento recusado → OS transiciona para CANCELED (rollback compensatório).",
+      "item": [
+        {
+          "name": "2.1 Criar nova OS para rollback",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": ["var data = pm.response.json(); pm.collectionVariables.set('os_id_rollback', data.id); pm.test('Status 201', function() { pm.response.to.have.status(201); });"], "type": "text/javascript" }
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"customer\": { \"name\": \"Maria Silva\", \"email\": \"maria@test.com\", \"phone\": \"11988887777\" },\n  \"vehicle\": { \"licensePlate\": \"DEF-9012\", \"brand\": \"VW\", \"model\": \"Golf\", \"year\": 2021, \"color\": \"Azul\" },\n  \"services\": [{ \"name\": \"Troca de Embreagem\", \"description\": \"Substituição do kit\", \"price\": 2200.00, \"estimatedHours\": 5.0 }],\n  \"parts\": [{ \"name\": \"Kit Embreagem\", \"partNumber\": \"EMB-VW\", \"quantity\": 1, \"unitPrice\": 1800.00 }],\n  \"diagnosticNotes\": \"Embreagem patinando\"\n}" },
+            "url": { "raw": "{{base_url_so}}/api/service-orders", "host": ["{{base_url_so}}"], "path": ["api", "service-orders"] }
+          }
+        },
+        {
+          "name": "2.2 Avançar → DIAGNOSIS → AWAITING_APPROVAL → Aprovar → FINISHED (atalho)",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\"status\": \"DIAGNOSIS\"}" },
+            "url": { "raw": "{{base_url_so}}/api/service-orders/{{os_id_rollback}}/status", "host": ["{{base_url_so}}"], "path": ["api", "service-orders", "{{os_id_rollback}}", "status"] }
+          }
+        },
+        {
+          "name": "2.3 Gerar Orçamento → AWAITING_APPROVAL",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": ["var data = pm.response.json(); pm.collectionVariables.set('approval_token_rb', data.approvalToken);"], "type": "text/javascript" }
+          }],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\"status\": \"AWAITING_APPROVAL\"}" },
+            "url": { "raw": "{{base_url_so}}/api/service-orders/{{os_id_rollback}}/status", "host": ["{{base_url_so}}"], "path": ["api", "service-orders", "{{os_id_rollback}}", "status"] }
+          }
+        },
+        {
+          "name": "2.4 Aprovar → EXECUTION",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url_so}}/api/quotations/{{os_id_rollback}}?token={{approval_token_rb}}&approved=true", "host": ["{{base_url_so}}"], "path": ["api", "quotations", "{{os_id_rollback}}"], "query": [{ "key": "token", "value": "{{approval_token_rb}}" }, { "key": "approved", "value": "true" }] }
+          }
+        },
+        {
+          "name": "2.5 Finalizar → FINISHED",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\"status\": \"FINISHED\"}" },
+            "url": { "raw": "{{base_url_so}}/api/service-orders/{{os_id_rollback}}/status", "host": ["{{base_url_so}}"], "path": ["api", "service-orders", "{{os_id_rollback}}", "status"] }
+          }
+        },
+        {
+          "name": "2.6 Criar Pagamento PIX (será recusado)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": ["var data = pm.response.json(); pm.collectionVariables.set('ext_pay_rollback', data.externalId);"], "type": "text/javascript" }
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"serviceOrderId\": \"{{os_id_rollback}}\",\n  \"amount\": 4000.00,\n  \"customerEmail\": \"maria@test.com\"\n}" },
+            "url": { "raw": "{{base_url_pay}}/api/payments", "host": ["{{base_url_pay}}"], "path": ["api", "payments"] }
+          }
+        },
+        {
+          "name": "2.7 Webhook — Pagamento REJEITADO (publica PaymentFailedEvent → SAGA ROLLBACK)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": ["pm.test('Webhook processado 200 OK', function() { pm.response.to.have.status(200); });"], "type": "text/javascript" }
+          }],
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{base_url_pay}}/api/payments/webhook?data.id={{ext_pay_rollback}}&type=payment&action=payment.updated", "host": ["{{base_url_pay}}"], "path": ["api", "payments", "webhook"], "query": [{ "key": "data.id", "value": "{{ext_pay_rollback}}" }, { "key": "type", "value": "payment" }, { "key": "action", "value": "payment.updated" }] }
+          }
+        },
+        {
+          "name": "2.8 Verificar OS — CANCELED (Saga Rollback executado!) 🔄",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": ["var data = pm.response.json(); pm.test('CANCELED — Saga Rollback compensatório executado!', function() { pm.expect(data.status).to.equal('CANCELED'); pm.expect(data.statusDescription).to.equal('Cancelada'); });"], "type": "text/javascript" }
+          }],
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url_so}}/api/service-orders/{{os_id_rollback}}/status", "host": ["{{base_url_so}}"], "path": ["api", "service-orders", "{{os_id_rollback}}", "status"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "📊 Consultas e Health Checks",
+      "item": [
+        {
+          "name": "3.1 Listar todas as OS ativas",
+          "request": { "method": "GET", "url": { "raw": "{{base_url_so}}/api/service-orders", "host": ["{{base_url_so}}"], "path": ["api", "service-orders"] } }
+        },
+        {
+          "name": "3.2 Health Check — Ordem de Serviço (8080)",
+          "request": { "method": "GET", "url": { "raw": "{{base_url_so}}/actuator/health", "host": ["{{base_url_so}}"], "path": ["actuator", "health"] } }
+        },
+        {
+          "name": "3.3 Health Check — Payment Billing (8081)",
+          "request": { "method": "GET", "url": { "raw": "{{base_url_pay}}/actuator/health", "host": ["{{base_url_pay}}"], "path": ["actuator", "health"] } }
+        },
+        {
+          "name": "3.4 Health Check — Notification Service (8082)",
+          "request": { "method": "GET", "url": { "raw": "{{base_url_notif}}/actuator/health", "host": ["{{base_url_notif}}"], "path": ["actuator", "health"] } }
+        },
+        {
+          "name": "3.5 RabbitMQ Dashboard (ver filas e mensagens)",
+          "request": { "method": "GET", "url": { "raw": "{{rabbitmq_ui}}", "host": ["{{rabbitmq_ui}}"], "path": [] } }
+        }
+      ]
+    }
+  ]
+}

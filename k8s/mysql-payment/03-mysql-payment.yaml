@@ -1,15 +1,14 @@
-
 # ─────────────────────────────────────────────────────────────────────────────
-# MySQL — service-order-service
-# Banco: oficina_db
+# MySQL — payment-billing-service
+# Banco: payment_db
 # ─────────────────────────────────────────────────────────────────────────────
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: mysql-so-pvc
+  name: mysql-pay-pvc
   namespace: fiap-oficina
   labels:
-    app: mysql-service-order
+    app: mysql-payment
 spec:
   accessModes:
     - ReadWriteOnce
@@ -22,44 +21,44 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: mysql-service-order
+  name: mysql-payment
   namespace: fiap-oficina
   labels:
-    app: mysql-service-order
+    app: mysql-payment
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: mysql-service-order
+      app: mysql-payment
   strategy:
     type: Recreate
   template:
     metadata:
       labels:
-        app: mysql-service-order
+        app: mysql-payment
     spec:
       containers:
-        - name: mysql-service-order
+        - name: mysql-payment
           image: mysql:8.2
           ports:
             - containerPort: 3306
           env:
             - name: MYSQL_DATABASE
-              value: "oficina_db"
+              value: "payment_db"
             - name: MYSQL_USER
               value: "oficina_user"
             - name: MYSQL_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: oficina-secrets
-                  key: DB_PASSWORD
+                  key: MYSQL_PAY_PASSWORD
             - name: MYSQL_ROOT_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: oficina-secrets
                   key: MYSQL_ROOT_PASSWORD
           volumeMounts:
-            - name: mysql-so-storage
+            - name: mysql-pay-storage
               mountPath: /var/lib/mysql
           resources:
             requests:
@@ -94,22 +93,22 @@ spec:
             initialDelaySeconds: 15
             periodSeconds: 5
       volumes:
-        - name: mysql-so-storage
+        - name: mysql-pay-storage
           persistentVolumeClaim:
-            claimName: mysql-so-pvc
+            claimName: mysql-pay-pvc
 
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: mysql-service-order
+  name: mysql-payment
   namespace: fiap-oficina
   labels:
-    app: mysql-service-order
+    app: mysql-payment
 spec:
   type: ClusterIP
   selector:
-    app: mysql-service-order
+    app: mysql-payment
   ports:
     - port: 3306
       targetPort: 3306
