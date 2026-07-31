@@ -11,7 +11,6 @@ namespace: fiap-oficina
 resources:
   - 00-namespace.yaml
   - 01-configmap.yaml
-  - 02-secret.yaml
   - 03-rabbitmq.yaml
   - mysql/03-mysql.yaml
   - mysql-payment/03-mysql-payment.yaml
