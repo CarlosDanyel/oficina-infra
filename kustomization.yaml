@@ -1,7 +1,6 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# Kustomization — aplica todos os manifests de uma vez
-#
-# Uso: kubectl apply -k k8s/
+# Kustomization — lê o .env da raiz da infraestrutura
+# Uso: kubectl apply -k .
 # ─────────────────────────────────────────────────────────────────────────────
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
@@ -17,12 +16,12 @@ secretGenerator:
       - .env
 
 resources:
-  - 00-namespace.yaml
-  - 01-configmap.yaml
-  - 03-rabbitmq.yaml
-  - mysql/03-mysql.yaml
-  - mysql-payment/03-mysql-payment.yaml
-  - mongo/03-mongo.yaml
-  - app/04-deployment.yaml
-  - app/05-service-ingress.yaml
-  - app/06-hpa.yaml
+  - k8s/00-namespace.yaml
+  - k8s/01-configmap.yaml
+  - k8s/03-rabbitmq.yaml
+  - k8s/mysql/03-mysql.yaml
+  - k8s/mysql-payment/03-mysql-payment.yaml
+  - k8s/mongo/03-mongo.yaml
+  - k8s/app/04-deployment.yaml
+  - k8s/app/05-service-ingress.yaml
+  - k8s/app/06-hpa.yaml

@@ -45,6 +45,17 @@ spec:
           volumeMounts:
             - name: mongo-storage
               mountPath: /data/db
+          env:
+            - name: MONGO_INITDB_ROOT_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: oficina-secrets
+                  key: MONGO_INITDB_ROOT_USERNAME
+            - name: MONGO_INITDB_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: oficina-secrets
+                  key: MONGO_INITDB_ROOT_PASSWORD
           resources:
             requests:
               cpu: "250m"
@@ -56,6 +67,10 @@ spec:
             exec:
               command:
                 - mongosh
+                - -u
+                - root
+                - -p
+                - root_password
                 - --eval
                 - "db.adminCommand('ping')"
             initialDelaySeconds: 30
@@ -65,6 +80,10 @@ spec:
             exec:
               command:
                 - mongosh
+                - -u
+                - root
+                - -p
+                - root_password
                 - --eval
                 - "db.adminCommand('ping')"
             initialDelaySeconds: 15

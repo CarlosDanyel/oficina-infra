@@ -22,6 +22,7 @@ data:
   MYSQL_PAY_USER: "oficina_user"
   MONGO_PORT: "27017"
   MONGO_DB: "notification_db"
+  MONGO_URI: "mongodb://root:root_password@mongo:27017/notification_db?authSource=admin"
   RABBITMQ_HOST: "rabbitmq"
   RABBITMQ_PORT: "5672"
   RABBITMQ_DEFAULT_USER: "guest"
