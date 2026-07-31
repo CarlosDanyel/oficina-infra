@@ -128,7 +128,7 @@ kubectl port-forward svc/rabbitmq 15672:15672 -n fiap-oficina &
 ### 2.7 Parar e remover
 
 ```bash
-kubectl delete -k oficina-infra/k8s/
+kubectl delete -k k8s/
 kubectl delete namespace fiap-oficina
 ```
 

@@ -11,6 +11,11 @@ namespace: fiap-oficina
 generatorOptions:
   disableNameSuffixHash: true
 
+configMapGenerator:
+  - name: oficina-config
+    envs:
+      - .env
+
 secretGenerator:
   - name: oficina-secrets
     envs:
@@ -18,7 +23,6 @@ secretGenerator:
 
 resources:
   - 00-namespace.yaml
-  - 01-configmap.yaml
   - 03-rabbitmq.yaml
   - mysql/03-mysql.yaml
   - mysql-payment/03-mysql-payment.yaml

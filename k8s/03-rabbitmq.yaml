@@ -25,9 +25,15 @@ spec:
               name: management
           env:
             - name: RABBITMQ_DEFAULT_USER
-              value: "guest"
+              valueFrom:
+                secretKeyRef:
+                  name: oficina-secrets
+                  key: RABBITMQ_DEFAULT_USER
             - name: RABBITMQ_DEFAULT_PASS
-              value: "guest"
+              valueFrom:
+                secretKeyRef:
+                  name: oficina-secrets
+                  key: RABBITMQ_DEFAULT_PASS
 ---
 apiVersion: v1
 kind: Service
