@@ -486,6 +486,134 @@
           }
         }
       ]
+    },
+    {
+      "name": "⚠️ 4. TRATAMENTO DE FALHAS E ERROS",
+      "description": "Endpoints para demonstração dos mecanismos de resiliência, transações compensatórias do Saga, exceções de negócio e respostas HTTP de erro (400, 404, 422).",
+      "item": [
+        {
+          "name": "Falha 1: Recusa de Orçamento pelo Cliente (GET /api/quotations/{id}?approved=false)",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "var data = pm.response.json();",
+                "pm.test('Status 200 OK', function() { pm.response.to.have.status(200); });",
+                "pm.test('Status Retornou para DIAGNOSIS', function() { pm.expect(data.status).to.equal('DIAGNOSIS'); });"
+              ],
+              "type": "text/javascript"
+            }
+          }],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url_so}}/api/quotations/{{os_id}}?token={{approval_token}}&approved=false",
+              "host": ["{{base_url_so}}"],
+              "path": ["api", "quotations", "{{os_id}}"],
+              "query": [
+                { "key": "token", "value": "{{approval_token}}" },
+                { "key": "approved", "value": "false" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Falha 2: Transição de Status Inválida (HTTP 422 - Unprocessable Entity)",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('Status 422 Unprocessable Entity', function() { pm.response.to.have.status(422); });",
+                "var data = pm.response.json();",
+                "pm.test('Erros de transição contem título correto', function() { pm.expect(data.title).to.include('Transição'); });"
+              ],
+              "type": "text/javascript"
+            }
+          }],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"newStatus\": \"FINISHED\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url_so}}/api/service-orders/{{os_id}}/status",
+              "host": ["{{base_url_so}}"],
+              "path": ["api", "service-orders", "{{os_id}}", "status"]
+            }
+          }
+        },
+        {
+          "name": "Falha 3: Consultar OS Inexistente (HTTP 404 - Not Found)",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('Status 404 Not Found', function() { pm.response.to.have.status(404); });",
+                "var data = pm.response.json();",
+                "pm.test('Mensagem de OS Não Encontrada', function() { pm.expect(data.title).to.include('OS não encontrada'); });"
+              ],
+              "type": "text/javascript"
+            }
+          }],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url_so}}/api/service-orders/99999999/status",
+              "host": ["{{base_url_so}}"],
+              "path": ["api", "service-orders", "99999999", "status"]
+            }
+          }
+        },
+        {
+          "name": "Falha 4: Consultar Pagamento Inexistente (HTTP 404 - Not Found)",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('Status 404 Not Found', function() { pm.response.to.have.status(404); });"
+              ],
+              "type": "text/javascript"
+            }
+          }],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url_pay}}/api/payments/service-order/OS-INEXISTENTE-999",
+              "host": ["{{base_url_pay}}"],
+              "path": ["api", "payments", "service-order", "OS-INEXISTENTE-999"]
+            }
+          }
+        },
+        {
+          "name": "Falha 5: Payload de OS Inválido / Dados Incompletos (HTTP 400 - Bad Request)",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('Status 400 Bad Request', function() { pm.response.to.have.status(400); });",
+                "var data = pm.response.json();",
+                "pm.test('Validação de erros por campo presente', function() { pm.expect(data.errors).to.be.an('object'); });"
+              ],
+              "type": "text/javascript"
+            }
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customer\": {\n    \"name\": \"\",\n    \"email\": \"email-invalido\",\n    \"phone\": \"\"\n  },\n  \"vehicle\": {\n    \"licensePlate\": \"\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url_so}}/api/service-orders",
+              "host": ["{{base_url_so}}"],
+              "path": ["api", "service-orders"]
+            }
+          }
+        }
+      ]
     }
   ]
 }

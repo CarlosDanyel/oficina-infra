@@ -343,3 +343,7 @@ open target/site/jacoco/index.html
 # 🐳 Parar tudo
 docker compose down -v
 ```
+A coleção contempla:
+- **Happy Path**: Abertura OS → Diagnóstico → Orçamento → Aprovação → Pagamento PIX → Entrega
+- **Saga Rollback**: Falha de pagamento → Compensação assíncrona (OS → `CANCELED`)
+- **Tratamento de Falhas e Erros**: Recusa de orçamento, transição inválida (422), 404 Not Found e validação de payloads (400)
