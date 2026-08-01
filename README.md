@@ -34,6 +34,7 @@ docker compose ps
 
 | Serviço | URL |
 |---|---|
+| **Domínio Principal (Ingress)** | **https://api.oficina.com** |
 | Service Order API (Swagger) | http://localhost:8080/swagger-ui.html |
 | Payment Billing API (Swagger) | http://localhost:8081/swagger-ui.html |
 | Notification Health Check | http://localhost:8082/actuator/health |
@@ -109,7 +110,12 @@ kubectl get hpa -n fiap-oficina
 # Verifique os HPAs ativos
 ```
 
-### 2.6 Acessar via port-forward
+### 2.6 Acessar via Ingress / Port-forward
+
+> **Domínio Principal (Ingress):** `https://api.oficina.com`
+> - `/api/service-orders` → Service Order API
+> - `/api/quotations` → Service Order API
+> - `/api/payments` → Payment Billing API
 
 ```bash
 # Service Order (porta 8080)
