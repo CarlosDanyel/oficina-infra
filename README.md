@@ -130,6 +130,7 @@ kubectl port-forward svc/rabbitmq 15672:15672 -n fiap-oficina &
 ```bash
 kubectl delete -k k8s/
 kubectl delete namespace fiap-oficina
+kubectl get namespace fiap-oficina -o json | jq '.spec.finalizers = []' | kubectl replace --raw "/api/v1/namespaces/fiap-oficina/finalize" -f -
 ```
 
 ---

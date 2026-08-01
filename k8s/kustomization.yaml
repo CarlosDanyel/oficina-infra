@@ -15,6 +15,9 @@ configMapGenerator:
   - name: oficina-config
     envs:
       - .env
+  - name: service-order-config
+    envs:
+      - .env
 
 secretGenerator:
   - name: oficina-secrets
